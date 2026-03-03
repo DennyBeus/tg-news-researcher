@@ -60,7 +60,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const input = $('Code: Parse Input').first().json;\nconst stateRows = $('PostgreSQL: Get State').all();\nconst userState = (stateRows.length > 0 && stateRows[0].json && stateRows[0].json.state) ? stateRows[0].json.state : null;\nconst { chat_id, user_id, text, callback_data, is_callback, callback_id } = input;\n\nlet route = 'simple_reply';\nlet reply_text = 'Неизвестная команда. Используйте /start для справки.';\nlet query = '';\nlet action_query = '';\nlet state_name = '';\nlet list_mode = '';\nlet entity = '';\nlet table_name = '';\n\nif (is_callback && callback_data) {\n  if (callback_data === 'add_channel') {\n    route = 'set_state'; state_name = 'waiting_for_channel';\n    reply_text = 'Отправьте URL канала (например: https://t.me/channel_name)';\n  } else if (callback_data === 'add_interest') {\n    route = 'set_state'; state_name = 'waiting_for_interest';\n    reply_text = 'Отправьте текст интереса (ключевое слово или фразу):';\n  } else if (callback_data === 'add_style') {\n    route = 'set_state'; state_name = 'waiting_for_style';\n    reply_text = 'Отправьте пример поста в вашем стиле:';\n  } else if (callback_data === 'delete_channels') {\n    route = 'show_list'; list_mode = 'delete'; entity = 'channel'; table_name = 'channels';\n    query = 'SELECT id, url AS display FROM channels ORDER BY id';\n  } else if (callback_data === 'delete_interests') {\n    route = 'show_list'; list_mode = 'delete'; entity = 'interest'; table_name = 'interests';\n    query = 'SELECT id, text AS display FROM interests ORDER BY id';\n  } else if (callback_data === 'delete_styles') {\n    route = 'show_list'; list_mode = 'delete'; entity = 'style'; table_name = 'styles';\n    query = 'SELECT id, LEFT(text, 50) AS display FROM styles ORDER BY id';\n  } else if (callback_data.startsWith('del_ch_')) {\n    route = 'db_action';\n    action_query = `DELETE FROM channels WHERE id = ${parseInt(callback_data.split('_')[2])}`;\n    reply_text = 'Канал удалён.';\n  } else if (callback_data.startsWith('del_int_')) {\n    route = 'db_action';\n    action_query = `DELETE FROM interests WHERE id = ${parseInt(callback_data.split('_')[2])}`;\n    reply_text = 'Интерес удалён.';\n  } else if (callback_data.startsWith('del_st_')) {\n    route = 'db_action';\n    action_query = `DELETE FROM styles WHERE id = ${parseInt(callback_data.split('_')[2])}`;\n    reply_text = 'Стиль удалён.';\n  }\n} else if (userState) {\n  if (userState === 'waiting_for_channel') {\n    route = 'db_action';\n    const safeUrl = text.split(`'`).join(`''`).replace(/\\s+/g, '');\n    action_query = `INSERT INTO channels (url) VALUES ('${safeUrl}') ON CONFLICT (url) DO NOTHING`;\n    reply_text = 'Канал добавлен.';\n  } else if (userState === 'waiting_for_interest') {\n    route = 'db_action';\n    const safe = text.split(`'`).join(`''`);\n    action_query = `INSERT INTO interests (text) VALUES ('${safe}')`;\n    reply_text = 'Интерес добавлен.';\n  } else if (userState === 'waiting_for_style') {\n    route = 'db_action';\n    const safe = text.split(`'`).join(`''`);\n    action_query = `INSERT INTO styles (text) VALUES ('${safe}')`;\n    reply_text = 'Стиль добавлен.';\n  } else if (userState === 'waiting_for_digest_time') {\n    if (/^([01]\\d|2[0-3]):([0-5]\\d)$/.test(text)) {\n      route = 'db_action';\n      action_query = `UPDATE settings SET value = '${text}' WHERE key = 'digest_time'`;\n      reply_text = `Время дайджеста установлено: ${text} МСК`;\n    } else {\n      route = 'simple_reply';\n      reply_text = 'Неверный формат. Отправьте время в формате HH:MM (например: 09:00)';\n    }\n  } else if (userState === 'waiting_for_post_ids') {\n    route = 'generate_post';\n  }\n} else {\n  const cmd = (text || '').split('@')[0];\n  if (cmd === '/start') {\n    route = 'simple_reply';\n    reply_text = `Привет! Я помогу собирать новости из Telegram-каналов.\\n\\nКоманды:\\n/set_channels — управление каналами\\n/set_interests — управление интересами\\n/set_style — управление стилями постов\\n/set_digest_time — время дайджеста\\n/generate_post — генерация поста`;\n  } else if (cmd === '/set_channels') {\n    route = 'show_list'; list_mode = 'view'; entity = 'channel'; table_name = 'channels';\n    query = 'SELECT id, url AS display FROM channels ORDER BY id';\n  } else if (cmd === '/set_interests') {\n    route = 'show_list'; list_mode = 'view'; entity = 'interest'; table_name = 'interests';\n    query = 'SELECT id, text AS display FROM interests ORDER BY id';\n  } else if (cmd === '/set_style') {\n    route = 'show_list'; list_mode = 'view'; entity = 'style'; table_name = 'styles';\n    query = 'SELECT id, LEFT(text, 50) AS display FROM styles ORDER BY id';\n  } else if (cmd === '/set_digest_time') {\n    route = 'set_state'; state_name = 'waiting_for_digest_time';\n    reply_text = 'Отправьте время в формате HH:MM (например: 09:00). Таймзона: МСК.';\n  } else if (cmd === '/generate_post') {\n    route = 'set_state'; state_name = 'waiting_for_post_ids';\n    reply_text = 'Отправьте id постов из дайджеста через пробел (например: 1 2 3 5 12)';\n  }\n}\n\nreturn [{ json: { route, chat_id, user_id, text, reply_text, query, action_query, state_name, list_mode, entity, table_name, callback_id, is_callback } }];"
+        "jsCode": "const input = $('Code: Parse Input').first().json;\nconst stateRows = $('PostgreSQL: Get State').all();\nconst userState = (stateRows.length > 0 && stateRows[0].json && stateRows[0].json.state) ? stateRows[0].json.state : null;\nconst { chat_id, user_id, text, callback_data, is_callback, callback_id } = input;\n\nlet route = 'simple_reply';\nlet reply_text = 'Неизвестная команда. Используйте /start для справки.';\nlet query = '';\nlet action_query = '';\nlet state_name = '';\nlet list_mode = '';\nlet entity = '';\nlet table_name = '';\n\nif (is_callback && callback_data) {\n  if (callback_data === 'add_channel') {\n    route = 'set_state'; state_name = 'waiting_for_channel';\n    reply_text = 'Отправьте URL канала (например: https://t.me/channel_name)';\n  } else if (callback_data === 'add_interest') {\n    route = 'set_state'; state_name = 'waiting_for_interest';\n    reply_text = 'Отправьте текст интереса (ключевое слово или фразу):';\n  } else if (callback_data === 'add_style') {\n    route = 'set_state'; state_name = 'waiting_for_style';\n    reply_text = 'Отправьте пример поста в вашем стиле:';\n  } else if (callback_data === 'delete_channels') {\n    route = 'show_list'; list_mode = 'delete'; entity = 'channel'; table_name = 'channels';\n    query = 'SELECT id, url AS display FROM channels ORDER BY id';\n  } else if (callback_data === 'delete_interests') {\n    route = 'show_list'; list_mode = 'delete'; entity = 'interest'; table_name = 'interests';\n    query = 'SELECT id, text AS display FROM interests ORDER BY id';\n  } else if (callback_data === 'delete_styles') {\n    route = 'show_list'; list_mode = 'delete'; entity = 'style'; table_name = 'styles';\n    query = 'SELECT id, LEFT(text, 50) AS display FROM styles ORDER BY id';\n  } else if (callback_data.startsWith('del_ch_')) {\n    route = 'db_action';\n    action_query = `DELETE FROM channels WHERE id = ${parseInt(callback_data.split('_')[2])}`;\n    reply_text = 'Канал удалён.';\n  } else if (callback_data.startsWith('del_int_')) {\n    route = 'db_action';\n    action_query = `DELETE FROM interests WHERE id = ${parseInt(callback_data.split('_')[2])}`;\n    reply_text = 'Интерес удалён.';\n  } else if (callback_data.startsWith('del_st_')) {\n    route = 'db_action';\n    action_query = `DELETE FROM styles WHERE id = ${parseInt(callback_data.split('_')[2])}`;\n    reply_text = 'Стиль удалён.';\n  }\n} else if (userState) {\n  const cmd = (text || '').split('@')[0];\n  if (cmd === '/cancel') {\n    route = 'db_action';\n    action_query = 'SELECT 1';\n    reply_text = 'Действие отменено.';\n  } else if (userState === 'waiting_for_channel') {\n    route = 'db_action';\n    const safeUrl = text.split(`'`).join(`''`).replace(/\\s+/g, '');\n    action_query = `INSERT INTO channels (url) VALUES ('${safeUrl}') ON CONFLICT (url) DO NOTHING`;\n    reply_text = 'Канал добавлен.';\n  } else if (userState === 'waiting_for_interest') {\n    route = 'db_action';\n    const safe = text.split(`'`).join(`''`);\n    action_query = `INSERT INTO interests (text) VALUES ('${safe}')`;\n    reply_text = 'Интерес добавлен.';\n  } else if (userState === 'waiting_for_style') {\n    route = 'db_action';\n    const safe = text.split(`'`).join(`''`);\n    action_query = `INSERT INTO styles (text) VALUES ('${safe}')`;\n    reply_text = 'Стиль добавлен.';\n  } else if (userState === 'waiting_for_digest_time') {\n    if (/^([01]\\d|2[0-3]):([0-5]\\d)$/.test(text)) {\n      route = 'db_action';\n      action_query = `UPDATE settings SET value = '${text}' WHERE key = 'digest_time'`;\n      reply_text = `Время дайджеста установлено: ${text} МСК`;\n    } else {\n      route = 'simple_reply';\n      reply_text = 'Неверный формат. Отправьте время в формате HH:MM (например: 09:00)';\n    }\n  } else if (userState === 'waiting_for_post_ids') {\n    const ids = text.split(/\\s+/).map(s => parseInt(s)).filter(n => !isNaN(n) && n > 0);\n    if (ids.length === 0) {\n      route = 'simple_reply';\n      reply_text = 'Не удалось распознать id постов. Отправьте числа через пробел (например: 1 2 3) или /cancel для отмены.';\n    } else {\n      route = 'generate_post';\n    }\n  }\n} else {\n  const cmd = (text || '').split('@')[0];\n  if (cmd === '/start') {\n    route = 'simple_reply';\n    reply_text = `Привет! Я помогу собирать новости из Telegram-каналов.\\n\\nКоманды:\\n/set_channels — управление каналами\\n/set_interests — управление интересами\\n/set_style — управление стилями постов\\n/set_digest_time — время дайджеста\\n/generate_post — генерация поста\\n/cancel — отмена текущего действия`;\n  } else if (cmd === '/set_channels') {\n    route = 'show_list'; list_mode = 'view'; entity = 'channel'; table_name = 'channels';\n    query = 'SELECT id, url AS display FROM channels ORDER BY id';\n  } else if (cmd === '/set_interests') {\n    route = 'show_list'; list_mode = 'view'; entity = 'interest'; table_name = 'interests';\n    query = 'SELECT id, text AS display FROM interests ORDER BY id';\n  } else if (cmd === '/set_style') {\n    route = 'show_list'; list_mode = 'view'; entity = 'style'; table_name = 'styles';\n    query = 'SELECT id, LEFT(text, 50) AS display FROM styles ORDER BY id';\n  } else if (cmd === '/set_digest_time') {\n    route = 'set_state'; state_name = 'waiting_for_digest_time';\n    reply_text = 'Отправьте время в формате HH:MM (например: 09:00). Таймзона: МСК.';\n  } else if (cmd === '/generate_post') {\n    route = 'set_state'; state_name = 'waiting_for_post_ids';\n    reply_text = 'Отправьте id постов из дайджеста через пробел (например: 1 2 3 5 12)';\n  } else if (cmd === '/cancel') {\n    route = 'simple_reply';\n    reply_text = 'Нет активного действия для отмены.';\n  }\n}\n\nreturn [{ json: { route, chat_id, user_id, text, reply_text, query, action_query, state_name, list_mode, entity, table_name, callback_id, is_callback } }];"
       },
       "id": "e1-0004",
       "name": "Code: Route",
@@ -601,6 +601,59 @@
           "name": "Telegram Bot API"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.is_callback }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e1-0026",
+      "name": "IF: Is Callback",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/answerCallbackQuery",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={\"callback_query_id\": \"{{ $('Code: Parse Input').first().json.callback_id }}\"}",
+        "options": {}
+      },
+      "id": "e1-0027",
+      "name": "HTTP: Answer Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        620
+      ]
     }
   ],
   "connections": {
@@ -620,6 +673,22 @@
         [
           {
             "node": "PostgreSQL: Get State",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF: Is Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Is Callback": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Answer Callback",
             "type": "main",
             "index": 0
           }

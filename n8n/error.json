@@ -11,7 +11,7 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $json.execution.customData?.chat_id || '' }}",
+        "chatId": "={{ $env.TG_CHAT_ID || '' }}",
         "text": "=⚠️ Ошибка в workflow: {{ $json.workflow.name }}\nНода: {{ $json.execution.error.node.name }}\nОшибка: {{ $json.execution.error.message }}\nВремя: {{ $now.format('DD.MM.YYYY HH:mm') }}",
         "additionalFields": {
           "parse_mode": "HTML"
