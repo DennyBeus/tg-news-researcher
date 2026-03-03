@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS news (
     date            TIMESTAMP NOT NULL,
     views           INTEGER,
     reactions_count INTEGER,
-    link            VARCHAR(255) NOT NULL,
+    link            VARCHAR(255) NOT NULL UNIQUE,
     source_channel  VARCHAR(255),
     created_at      TIMESTAMP DEFAULT NOW()
 );
