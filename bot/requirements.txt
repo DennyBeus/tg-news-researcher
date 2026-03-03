@@ -1,0 +1,5 @@
+aiogram>=3.10
+asyncpg>=0.29
+openai>=1.30
+apscheduler>=3.10
+python-dotenv>=1.0

@@ -1,5 +1,5 @@
 {
-  "name": "Error Handler",
+  "name": "Error Logger",
   "nodes": [
     {
       "parameters": {},
@@ -11,21 +11,19 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TG_CHAT_ID || '' }}",
-        "text": "=⚠️ Ошибка в workflow: {{ $json.workflow.name }}\nНода: {{ $json.execution.error.node.name }}\nОшибка: {{ $json.execution.error.message }}\nВремя: {{ $now.format('DD.MM.YYYY HH:mm') }}",
-        "additionalFields": {
-          "parse_mode": "HTML"
-        }
+        "operation": "executeQuery",
+        "query": "=INSERT INTO errors (workflow_name, node_name, message) VALUES ('{{ $json.workflow.name }}', '{{ $json.execution.error.node.name }}', '{{ $json.execution.error.message }}')",
+        "options": {}
       },
       "id": "a1b2c3d4-0001-4000-8000-000000000002",
-      "name": "Telegram: Error Notification",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
+      "name": "PostgreSQL: Log Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
       "position": [480, 300],
       "credentials": {
-        "telegramApi": {
-          "id": "TELEGRAM_CREDENTIAL_ID",
-          "name": "Telegram Bot API"
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
         }
       }
     }
@@ -35,7 +33,7 @@
       "main": [
         [
           {
-            "node": "Telegram: Error Notification",
+            "node": "PostgreSQL: Log Error",
             "type": "main",
             "index": 0
           }

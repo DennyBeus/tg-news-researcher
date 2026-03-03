@@ -4,3 +4,4 @@
 \i 004_interests.sql
 \i 005_settings.sql
 \i 006_user_state.sql
+\i 007_errors.sql
