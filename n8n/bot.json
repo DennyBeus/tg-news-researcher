@@ -1,0 +1,865 @@
+{
+  "name": "Telegram Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message",
+          "callback_query"
+        ]
+      },
+      "id": "e1-0001",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        400
+      ],
+      "webhookId": "tg-bot-webhook",
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nlet chat_id, user_id, text, callback_data, is_callback, callback_id;\nif (data.callback_query) {\n  const cb = data.callback_query;\n  chat_id = String(cb.message.chat.id);\n  user_id = String(cb.from.id);\n  text = '';\n  callback_data = cb.data || '';\n  callback_id = cb.id || '';\n  is_callback = true;\n} else if (data.message) {\n  const msg = data.message;\n  chat_id = String(msg.chat.id);\n  user_id = String(msg.from.id);\n  text = (msg.text || '').trim();\n  callback_data = '';\n  callback_id = '';\n  is_callback = false;\n} else {\n  chat_id = ''; user_id = ''; text = '';\n  callback_data = ''; callback_id = ''; is_callback = false;\n}\nreturn [{ json: { chat_id, user_id, text, callback_data, is_callback, callback_id } }];"
+      },
+      "id": "e1-0002",
+      "name": "Code: Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT state, data FROM user_state WHERE user_id = {{ $json.user_id }}::bigint",
+        "options": {}
+      },
+      "id": "e1-0003",
+      "name": "PostgreSQL: Get State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        680,
+        400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Code: Parse Input').first().json;\nconst stateRows = $('PostgreSQL: Get State').all();\nconst userState = (stateRows.length > 0 && stateRows[0].json && stateRows[0].json.state) ? stateRows[0].json.state : null;\nconst { chat_id, user_id, text, callback_data, is_callback, callback_id } = input;\n\nlet route = 'simple_reply';\nlet reply_text = 'Неизвестная команда. Используйте /start для справки.';\nlet query = '';\nlet action_query = '';\nlet state_name = '';\nlet list_mode = '';\nlet entity = '';\nlet table_name = '';\n\nif (is_callback && callback_data) {\n  if (callback_data === 'add_channel') {\n    route = 'set_state'; state_name = 'waiting_for_channel';\n    reply_text = 'Отправьте URL канала (например: https://t.me/channel_name)';\n  } else if (callback_data === 'add_interest') {\n    route = 'set_state'; state_name = 'waiting_for_interest';\n    reply_text = 'Отправьте текст интереса (ключевое слово или фразу):';\n  } else if (callback_data === 'add_style') {\n    route = 'set_state'; state_name = 'waiting_for_style';\n    reply_text = 'Отправьте пример поста в вашем стиле:';\n  } else if (callback_data === 'delete_channels') {\n    route = 'show_list'; list_mode = 'delete'; entity = 'channel'; table_name = 'channels';\n    query = 'SELECT id, url AS display FROM channels ORDER BY id';\n  } else if (callback_data === 'delete_interests') {\n    route = 'show_list'; list_mode = 'delete'; entity = 'interest'; table_name = 'interests';\n    query = 'SELECT id, text AS display FROM interests ORDER BY id';\n  } else if (callback_data === 'delete_styles') {\n    route = 'show_list'; list_mode = 'delete'; entity = 'style'; table_name = 'styles';\n    query = 'SELECT id, LEFT(text, 50) AS display FROM styles ORDER BY id';\n  } else if (callback_data.startsWith('del_ch_')) {\n    route = 'db_action';\n    action_query = `DELETE FROM channels WHERE id = ${parseInt(callback_data.split('_')[2])}`;\n    reply_text = 'Канал удалён.';\n  } else if (callback_data.startsWith('del_int_')) {\n    route = 'db_action';\n    action_query = `DELETE FROM interests WHERE id = ${parseInt(callback_data.split('_')[2])}`;\n    reply_text = 'Интерес удалён.';\n  } else if (callback_data.startsWith('del_st_')) {\n    route = 'db_action';\n    action_query = `DELETE FROM styles WHERE id = ${parseInt(callback_data.split('_')[2])}`;\n    reply_text = 'Стиль удалён.';\n  }\n} else if (userState) {\n  if (userState === 'waiting_for_channel') {\n    route = 'db_action';\n    const safeUrl = text.split(`'`).join(`''`).replace(/\\s+/g, '');\n    action_query = `INSERT INTO channels (url) VALUES ('${safeUrl}') ON CONFLICT (url) DO NOTHING`;\n    reply_text = 'Канал добавлен.';\n  } else if (userState === 'waiting_for_interest') {\n    route = 'db_action';\n    const safe = text.split(`'`).join(`''`);\n    action_query = `INSERT INTO interests (text) VALUES ('${safe}')`;\n    reply_text = 'Интерес добавлен.';\n  } else if (userState === 'waiting_for_style') {\n    route = 'db_action';\n    const safe = text.split(`'`).join(`''`);\n    action_query = `INSERT INTO styles (text) VALUES ('${safe}')`;\n    reply_text = 'Стиль добавлен.';\n  } else if (userState === 'waiting_for_digest_time') {\n    if (/^([01]\\d|2[0-3]):([0-5]\\d)$/.test(text)) {\n      route = 'db_action';\n      action_query = `UPDATE settings SET value = '${text}' WHERE key = 'digest_time'`;\n      reply_text = `Время дайджеста установлено: ${text} МСК`;\n    } else {\n      route = 'simple_reply';\n      reply_text = 'Неверный формат. Отправьте время в формате HH:MM (например: 09:00)';\n    }\n  } else if (userState === 'waiting_for_post_ids') {\n    route = 'generate_post';\n  }\n} else {\n  const cmd = (text || '').split('@')[0];\n  if (cmd === '/start') {\n    route = 'simple_reply';\n    reply_text = `Привет! Я помогу собирать новости из Telegram-каналов.\\n\\nКоманды:\\n/set_channels — управление каналами\\n/set_interests — управление интересами\\n/set_style — управление стилями постов\\n/set_digest_time — время дайджеста\\n/generate_post — генерация поста`;\n  } else if (cmd === '/set_channels') {\n    route = 'show_list'; list_mode = 'view'; entity = 'channel'; table_name = 'channels';\n    query = 'SELECT id, url AS display FROM channels ORDER BY id';\n  } else if (cmd === '/set_interests') {\n    route = 'show_list'; list_mode = 'view'; entity = 'interest'; table_name = 'interests';\n    query = 'SELECT id, text AS display FROM interests ORDER BY id';\n  } else if (cmd === '/set_style') {\n    route = 'show_list'; list_mode = 'view'; entity = 'style'; table_name = 'styles';\n    query = 'SELECT id, LEFT(text, 50) AS display FROM styles ORDER BY id';\n  } else if (cmd === '/set_digest_time') {\n    route = 'set_state'; state_name = 'waiting_for_digest_time';\n    reply_text = 'Отправьте время в формате HH:MM (например: 09:00). Таймзона: МСК.';\n  } else if (cmd === '/generate_post') {\n    route = 'set_state'; state_name = 'waiting_for_post_ids';\n    reply_text = 'Отправьте id постов из дайджеста через пробел (например: 1 2 3 5 12)';\n  }\n}\n\nreturn [{ json: { route, chat_id, user_id, text, reply_text, query, action_query, state_name, list_mode, entity, table_name, callback_id, is_callback } }];"
+      },
+      "id": "e1-0004",
+      "name": "Code: Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "simple_reply",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "simple_reply"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "show_list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "show_list"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "set_state",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "set_state"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "db_action",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "db_action"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "generate_post",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "generate_post"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "e1-0005",
+      "name": "Switch: Main",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1120,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.reply_text }}",
+        "additionalFields": {}
+      },
+      "id": "e1-0006",
+      "name": "Telegram: Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        120
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {}
+      },
+      "id": "e1-0007",
+      "name": "PostgreSQL: Get List",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1360,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $('Code: Route').first().json.list_mode }}",
+              "rightValue": "view",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e1-0008",
+      "name": "IF: View Mode",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1580,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\nconst meta = $('Code: Route').first().json;\nconst { chat_id, entity, table_name } = meta;\n\nlet message = '';\nif (items.length === 0 || (items.length === 1 && !items[0].id)) {\n  message = 'Список пуст.';\n} else {\n  items.forEach(item => {\n    message += `#${item.id}: ${item.display}\\n`;\n  });\n}\nconst add_callback = `add_${entity}`;\nconst delete_callback = `delete_${table_name}`;\nreturn [{ json: { chat_id, message, add_callback, delete_callback } }];"
+      },
+      "id": "e1-0009",
+      "name": "Code: Format View",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {},
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "values": [
+                {
+                  "text": "Добавить",
+                  "additionalFields": {
+                    "callbackData": "={{ $json.add_callback }}"
+                  }
+                },
+                {
+                  "text": "Удалить",
+                  "additionalFields": {
+                    "callbackData": "={{ $json.delete_callback }}"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "e1-0010",
+      "name": "Telegram: Send View",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2020,
+        200
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\nconst meta = $('Code: Route').first().json;\nconst { chat_id, entity } = meta;\nconst prefix = entity === 'channel' ? 'del_ch_' : entity === 'interest' ? 'del_int_' : 'del_st_';\n\nlet text = 'Список пуст.';\nlet keyboard = [];\nif (items.length > 0 && items[0].id) {\n  text = 'Выберите элемент для удаления:';\n  keyboard = items.map(item => ([\n    { text: `#${item.id}: ${item.display}`, callback_data: `${prefix}${item.id}` }\n  ]));\n}\nconst body = { chat_id: Number(chat_id), text, reply_markup: { inline_keyboard: keyboard } };\nreturn [{ json: { body: JSON.stringify(body) } }];"
+      },
+      "id": "e1-0011",
+      "name": "Code: Format Delete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1800,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "e1-0012",
+      "name": "HTTP: Send Delete List",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2020,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO user_state (user_id, state, updated_at) VALUES ({{ $json.user_id }}::bigint, '{{ $json.state_name }}', NOW()) ON CONFLICT (user_id) DO UPDATE SET state = '{{ $json.state_name }}', updated_at = NOW()",
+        "options": {}
+      },
+      "id": "e1-0013",
+      "name": "PostgreSQL: Set State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1360,
+        520
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Code: Route').first().json.chat_id }}",
+        "text": "={{ $('Code: Route').first().json.reply_text }}",
+        "additionalFields": {}
+      },
+      "id": "e1-0014",
+      "name": "Telegram: Ask Input",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1580,
+        520
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.action_query }}",
+        "options": {}
+      },
+      "id": "e1-0015",
+      "name": "PostgreSQL: Execute Action",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1360,
+        700
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM user_state WHERE user_id = {{ $('Code: Route').first().json.user_id }}::bigint",
+        "options": {}
+      },
+      "id": "e1-0016",
+      "name": "PostgreSQL: Clear State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1580,
+        700
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Code: Route').first().json.chat_id }}",
+        "text": "={{ $('Code: Route').first().json.reply_text }}",
+        "additionalFields": {}
+      },
+      "id": "e1-0017",
+      "name": "Telegram: Confirm",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1800,
+        700
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const meta = $('Code: Route').first().json;\nconst { text, chat_id, user_id } = meta;\nconst ids = text.split(/\\s+/).map(s => parseInt(s)).filter(n => !isNaN(n) && n > 0);\nif (ids.length === 0) {\n  throw new Error('Не удалось распознать id постов. Отправьте числа через пробел.');\n}\nreturn [{ json: { ids, ids_str: ids.join(','), chat_id, user_id } }];"
+      },
+      "id": "e1-0018",
+      "name": "Code: Parse Post IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1360,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, text, link, source_channel FROM news WHERE id IN ({{ $json.ids_str }})",
+        "options": {}
+      },
+      "id": "e1-0019",
+      "name": "PostgreSQL: Get Posts",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1580,
+        900
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT text FROM styles",
+        "options": {}
+      },
+      "id": "e1-0020",
+      "name": "PostgreSQL: Get Styles",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1800,
+        900
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const posts = $('PostgreSQL: Get Posts').all().map(i => i.json);\nconst styles = $('PostgreSQL: Get Styles').all().map(i => i.json.text);\nconst meta = $('Code: Parse Post IDs').first().json;\nreturn [{ json: { posts: JSON.stringify(posts), styles: JSON.stringify(styles), chat_id: meta.chat_id, user_id: meta.user_id } }];"
+      },
+      "id": "e1-0021",
+      "name": "Code: Prepare AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2020,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "sendMessage",
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Ты — копирайтер. Тебе даны тексты новостей и примеры постов пользователя (его стиль).\n\nЗадача: напиши один пост на основе предоставленных новостей в стиле пользователя. Сохрани его манеру изложения, структуру и тон. Пост должен быть цельным и информативным.\n\nНовости:\n{{ $json.posts }}\n\nПримеры стиля:\n{{ $json.styles }}\n\nВерни только текст готового поста, без пояснений."
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "e1-0022",
+      "name": "OpenAI: Generate Post",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        2240,
+        900
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.message?.content || $input.first().json.text || '';\nconst meta = $('Code: Prepare AI').first().json;\nreturn [{ json: { chat_id: meta.chat_id, user_id: meta.user_id, post_text: raw } }];"
+      },
+      "id": "e1-0023",
+      "name": "Code: Extract Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2460,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "DELETE FROM user_state WHERE user_id = {{ $json.user_id }}::bigint",
+        "options": {}
+      },
+      "id": "e1-0024",
+      "name": "PostgreSQL: Clear State Gen",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2680,
+        900
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.post_text }}",
+        "additionalFields": {}
+      },
+      "id": "e1-0025",
+      "name": "Telegram: Send Post",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2900,
+        900
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "TELEGRAM_CREDENTIAL_ID",
+          "name": "Telegram Bot API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code: Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Parse Input": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL: Get State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Get State": {
+      "main": [
+        [
+          {
+            "node": "Code: Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Route": {
+      "main": [
+        [
+          {
+            "node": "Switch: Main",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch: Main": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PostgreSQL: Get List",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PostgreSQL: Set State",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PostgreSQL: Execute Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Parse Post IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram: Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Get List": {
+      "main": [
+        [
+          {
+            "node": "IF: View Mode",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: View Mode": {
+      "main": [
+        [
+          {
+            "node": "Code: Format View",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code: Format Delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Format View": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Send View",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Format Delete": {
+      "main": [
+        [
+          {
+            "node": "HTTP: Send Delete List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Set State": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Ask Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Execute Action": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL: Clear State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Clear State": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Confirm",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Parse Post IDs": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL: Get Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Get Posts": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL: Get Styles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Get Styles": {
+      "main": [
+        [
+          {
+            "node": "Code: Prepare AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Prepare AI": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Generate Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Generate Post": {
+      "main": [
+        [
+          {
+            "node": "Code: Extract Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Extract Result": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL: Clear State Gen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Clear State Gen": {
+      "main": [
+        [
+          {
+            "node": "Telegram: Send Post",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [],
+  "pinData": {}
+}

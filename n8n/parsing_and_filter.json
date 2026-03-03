@@ -1,0 +1,347 @@
+{
+  "name": "Parsing and Filter",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 4
+            }
+          ]
+        }
+      },
+      "id": "c1000000-0001-4000-8000-000000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT url FROM channels",
+        "options": {}
+      },
+      "id": "c1000000-0001-4000-8000-000000000002",
+      "name": "PostgreSQL: Get Channels",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 300],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-channels-exist",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c1000000-0001-4000-8000-000000000010",
+      "name": "IF: Has Channels",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst urls = items.map(i => i.json.url).filter(Boolean);\n\nif (urls.length === 0) {\n  return [{ json: { command: '' } }];\n}\n\n// Start date = now minus schedule interval (4h) minus 1h buffer = 5h ago\nconst now = new Date();\nconst startDate = new Date(now.getTime() - 5 * 60 * 60 * 1000);\nconst pad = (n) => String(n).padStart(2, '0');\nconst startStr = `${startDate.getFullYear()}-${pad(startDate.getMonth()+1)}-${pad(startDate.getDate())} ${pad(startDate.getHours())}:${pad(startDate.getMinutes())}:${pad(startDate.getSeconds())}`;\n\nconst channelArgs = urls.join(' ');\nconst command = `cd /path/to/tg-news-researcher && python parser/run.py --stdout -f json -j -s \"${startStr}\" ${channelArgs}`;\n\nreturn [{ json: { command } }];"
+      },
+      "id": "c1000000-0001-4000-8000-000000000003",
+      "name": "Code: Build Parser Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "command": "={{ $json.command }}"
+      },
+      "id": "c1000000-0001-4000-8000-000000000004",
+      "name": "Execute Command: Parser",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.stdout;\nif (!raw || raw.trim() === '' || raw.trim() === '[]') {\n  return [];\n}\ntry {\n  const posts = JSON.parse(raw);\n  return posts.map(p => ({ json: p }));\n} catch (e) {\n  return [];\n}"
+      },
+      "id": "c1000000-0001-4000-8000-000000000005",
+      "name": "Code: Parse stdout JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-has-posts",
+              "leftValue": "={{ $input.all().length }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c1000000-0001-4000-8000-000000000011",
+      "name": "IF: Has Posts",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1580, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT text FROM interests",
+        "options": {}
+      },
+      "id": "c1000000-0001-4000-8000-000000000006",
+      "name": "PostgreSQL: Get Interests",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1800, 300],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const interests = $('PostgreSQL: Get Interests').all().map(i => i.json.text);\nconst posts = $('Code: Parse stdout JSON').all().map(i => i.json);\n\nreturn [{ json: { interests, posts } }];"
+      },
+      "id": "c1000000-0001-4000-8000-000000000012",
+      "name": "Code: Merge Posts and Interests",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2020, 300]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "sendMessage",
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Ты — фильтр новостей. Тебе дан список интересов пользователя и массив постов из Telegram-каналов.\n\nЗадача: отобрать только те посты, которые соответствуют хотя бы одному интересу. Соответствие определяй по смыслу, а не по точному совпадению слов.\n\nИнтересы:\n{{ $json.interests }}\n\nПосты:\n{{ JSON.stringify($json.posts) }}\n\nВерни JSON-массив подходящих постов. Каждый объект — точная копия исходного поста без изменений. Если ни один пост не подходит — верни пустой массив []. Не добавляй пояснений, только JSON."
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.1,
+          "response_format": "json_object"
+        }
+      },
+      "id": "c1000000-0001-4000-8000-000000000007",
+      "name": "OpenAI: Filter by Interests",
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [2240, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.message?.content || $input.first().json.text || '';\ntry {\n  let parsed = JSON.parse(raw);\n  const posts = Array.isArray(parsed) ? parsed : (parsed.posts || parsed.results || []);\n  if (posts.length === 0) return [];\n  return posts.map(p => ({ json: p }));\n} catch (e) {\n  return [];\n}"
+      },
+      "id": "c1000000-0001-4000-8000-000000000008",
+      "name": "Code: Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO news (text, date, views, reactions_count, link, source_channel)\nVALUES\n{{ $input.all().map(item => {\n  const j = item.json;\n  const text = (j.text || '').replace(/'/g, \"''\");\n  const link = (j.link || '').replace(/'/g, \"''\");\n  const source = (j.source_channel || '').replace(/'/g, \"''\");\n  return `('${text}', '${j.date}', ${j.views || 0}, ${j.reactions_count || 0}, '${link}', '${source}')`;\n}).join(',\\n') }}\nON CONFLICT (link) DO NOTHING",
+        "options": {}
+      },
+      "id": "c1000000-0001-4000-8000-000000000009",
+      "name": "PostgreSQL: Insert News",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2680, 300],
+      "credentials": {
+        "postgres": {
+          "id": "POSTGRES_CREDENTIAL_ID",
+          "name": "PostgreSQL"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL: Get Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Get Channels": {
+      "main": [
+        [
+          {
+            "node": "IF: Has Channels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has Channels": {
+      "main": [
+        [
+          {
+            "node": "Code: Build Parser Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Build Parser Command": {
+      "main": [
+        [
+          {
+            "node": "Execute Command: Parser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Command: Parser": {
+      "main": [
+        [
+          {
+            "node": "Code: Parse stdout JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Parse stdout JSON": {
+      "main": [
+        [
+          {
+            "node": "IF: Has Posts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has Posts": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL: Get Interests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PostgreSQL: Get Interests": {
+      "main": [
+        [
+          {
+            "node": "Code: Merge Posts and Interests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Merge Posts and Interests": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: Filter by Interests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: Filter by Interests": {
+      "main": [
+        [
+          {
+            "node": "Code: Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code: Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "PostgreSQL: Insert News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [],
+  "pinData": {}
+}
