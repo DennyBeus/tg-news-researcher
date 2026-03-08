@@ -27,3 +27,5 @@ Thumbs.db
 # Vibecoding files
 PROJECT.md
 CLAUDE.md
+.cursor
+.claude
