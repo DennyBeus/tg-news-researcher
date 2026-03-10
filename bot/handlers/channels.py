@@ -38,7 +38,7 @@ async def cb_delete_channels(callback: CallbackQuery, pool: asyncpg.Pool) -> Non
     await callback.answer()
     rows = await pool.fetch("SELECT id, url FROM channels ORDER BY id")
     if not rows:
-        await callback.message.answer("Список пуст.")
+        await callback.message.answer("Список пуст")
         return
     kb = build_delete_keyboard(rows, "url", "del_ch_")
     await callback.message.answer("Выберите канал для удаления:", reply_markup=kb)
@@ -49,7 +49,7 @@ async def cb_delete_channel(callback: CallbackQuery, pool: asyncpg.Pool) -> None
     await callback.answer()
     channel_id = int(callback.data.removeprefix("del_ch_"))
     await pool.execute("DELETE FROM channels WHERE id = $1", channel_id)
-    await callback.message.answer("Канал удалён.")
+    await callback.message.answer("Канал удалён")
 
 
 @router.message(StateFilter(ChannelStates.waiting_for_channel))
@@ -61,4 +61,4 @@ async def handle_channel_input(
         "INSERT INTO channels (url) VALUES ($1) ON CONFLICT (url) DO NOTHING", url,
     )
     await state.clear()
-    await message.answer("Канал добавлен.")
+    await message.answer("Канал добавлен")

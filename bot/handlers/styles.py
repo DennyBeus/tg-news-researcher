@@ -40,7 +40,7 @@ async def cb_delete_styles(callback: CallbackQuery, pool: asyncpg.Pool) -> None:
         "SELECT id, LEFT(text, 50) AS text FROM styles ORDER BY id"
     )
     if not rows:
-        await callback.message.answer("Список пуст.")
+        await callback.message.answer("Список пуст")
         return
     kb = build_delete_keyboard(rows, "text", "del_st_")
     await callback.message.answer("Выберите стиль для удаления:", reply_markup=kb)
@@ -51,7 +51,7 @@ async def cb_delete_style(callback: CallbackQuery, pool: asyncpg.Pool) -> None:
     await callback.answer()
     style_id = int(callback.data.removeprefix("del_st_"))
     await pool.execute("DELETE FROM styles WHERE id = $1", style_id)
-    await callback.message.answer("Стиль удалён.")
+    await callback.message.answer("Стиль удалён")
 
 
 @router.message(StateFilter(StyleStates.waiting_for_style))
@@ -60,4 +60,4 @@ async def handle_style_input(
 ) -> None:
     await pool.execute("INSERT INTO styles (text) VALUES ($1)", message.text.strip())
     await state.clear()
-    await message.answer("Стиль добавлен.")
+    await message.answer("Стиль добавлен")

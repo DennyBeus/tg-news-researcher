@@ -34,7 +34,7 @@ async def handle_post_ids_input(
     if not ids:
         await message.answer(
             "Не удалось распознать id постов. "
-            "Отправьте числа через пробел (например: 1 2 3) или /cancel для отмены."
+            "Отправьте числа через пробел (например: 1 2 3) или /cancel для отмены"
         )
         return
 
@@ -44,7 +44,7 @@ async def handle_post_ids_input(
     )
     if not posts:
         await message.answer(
-            "Посты с указанными id не найдены. Попробуйте другие id или /cancel."
+            "Посты с указанными id не найдены. Попробуйте другие id или /cancel"
         )
         return
 

@@ -5,8 +5,9 @@ from aiogram.types import Message
 router = Router()
 
 WELCOME_TEXT = (
-    "Привет! Я помогу собирать новости из Telegram-каналов.\n\n"
+    "Привет! Я могу собирать новости из Telegram каналов, делать по ним дайджесты и генерировать посты в твоём стиле.\n\n"
     "Команды:\n"
+    "/start — запуск бота\n"
     "/set_channels — управление каналами\n"
     "/set_interests — управление интересами\n"
     "/set_style — управление стилями постов\n"

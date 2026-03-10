@@ -4,6 +4,7 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.types import BotCommand
 
 from bot.config import config
 from bot.db import init_pool, close_pool
@@ -29,6 +30,15 @@ logger = logging.getLogger(__name__)
 async def on_startup(bot: Bot) -> None:
     await init_pool()
     start_scheduler(bot)
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Запустить бота"),
+        BotCommand(command="set_channels", description="Управление каналами"),
+        BotCommand(command="set_interests", description="Управление интересами"),
+        BotCommand(command="set_style", description="Управление стилями постов"),
+        BotCommand(command="set_digest_time", description="Время дайджеста"),
+        BotCommand(command="generate_post", description="Генерация поста"),
+        BotCommand(command="cancel", description="Отмена текущего действия"),
+    ])
     logger.info("Bot started")
 
 

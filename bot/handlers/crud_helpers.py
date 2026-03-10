@@ -35,5 +35,5 @@ def build_delete_keyboard(
 
 def format_list(rows: Sequence[asyncpg.Record], display_field: str) -> str:
     if not rows:
-        return "Список пуст."
+        return "Список пуст"
     return "\n".join(f"#{r['id']}: {r[display_field]}" for r in rows)
