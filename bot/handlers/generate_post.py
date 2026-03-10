@@ -13,12 +13,6 @@ router = Router()
 @router.message(Command("generate_post"))
 async def cmd_generate_post(message: Message, state: FSMContext, pool: asyncpg.Pool) -> None:
     await state.set_state(GeneratePostStates.waiting_for_post_ids)
-    await pool.execute(
-        "INSERT INTO user_state (user_id, state, updated_at) "
-        "VALUES ($1, 'waiting_for_post_ids', NOW()) "
-        "ON CONFLICT (user_id) DO UPDATE SET state = 'waiting_for_post_ids', updated_at = NOW()",
-        message.from_user.id,
-    )
     await message.answer(
         "Отправьте id постов из дайджеста через пробел (например: 1 2 3 5 12)"
     )
@@ -63,5 +57,4 @@ async def handle_post_ids_input(
     result = await generate_post_text(news_texts, styles_texts)
 
     await state.clear()
-    await pool.execute("DELETE FROM user_state WHERE user_id = $1", message.from_user.id)
     await message.answer(result)

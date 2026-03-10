@@ -28,12 +28,6 @@ async def cb_add_channel(
 ) -> None:
     await callback.answer()
     await state.set_state(ChannelStates.waiting_for_channel)
-    await pool.execute(
-        "INSERT INTO user_state (user_id, state, updated_at) "
-        "VALUES ($1, 'waiting_for_channel', NOW()) "
-        "ON CONFLICT (user_id) DO UPDATE SET state = 'waiting_for_channel', updated_at = NOW()",
-        callback.from_user.id,
-    )
     await callback.message.answer(
         "Отправьте URL канала (например: https://t.me/channel_name)"
     )
@@ -67,5 +61,4 @@ async def handle_channel_input(
         "INSERT INTO channels (url) VALUES ($1) ON CONFLICT (url) DO NOTHING", url,
     )
     await state.clear()
-    await pool.execute("DELETE FROM user_state WHERE user_id = $1", message.from_user.id)
     await message.answer("Канал добавлен.")

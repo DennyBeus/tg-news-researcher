@@ -30,12 +30,6 @@ async def cb_add_style(
 ) -> None:
     await callback.answer()
     await state.set_state(StyleStates.waiting_for_style)
-    await pool.execute(
-        "INSERT INTO user_state (user_id, state, updated_at) "
-        "VALUES ($1, 'waiting_for_style', NOW()) "
-        "ON CONFLICT (user_id) DO UPDATE SET state = 'waiting_for_style', updated_at = NOW()",
-        callback.from_user.id,
-    )
     await callback.message.answer("Отправьте пример поста в вашем стиле:")
 
 
@@ -66,5 +60,4 @@ async def handle_style_input(
 ) -> None:
     await pool.execute("INSERT INTO styles (text) VALUES ($1)", message.text.strip())
     await state.clear()
-    await pool.execute("DELETE FROM user_state WHERE user_id = $1", message.from_user.id)
     await message.answer("Стиль добавлен.")

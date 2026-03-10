@@ -1,4 +1,5 @@
 import logging
+import traceback
 from datetime import datetime, timezone, timedelta
 
 import asyncpg
@@ -10,6 +11,20 @@ from bot.services.openai_service import summarize_news
 logger = logging.getLogger(__name__)
 
 MSK = timezone(timedelta(hours=3))
+
+
+async def notify_error(bot: Bot, job_name: str, exc: Exception) -> None:
+    """Send a critical error notification to the admin chat."""
+    tb = traceback.format_exc()
+    text = (
+        f"<b>Критическая ошибка: {job_name}</b>\n\n"
+        f"{type(exc).__name__}: {exc}\n\n"
+        f"<pre>{tb[-1000:]}</pre>"
+    )
+    try:
+        await bot.send_message(config.chat_id, text)
+    except Exception:
+        logger.exception("Failed to send error notification to Telegram")
 
 
 async def send_digest(bot: Bot, pool: asyncpg.Pool) -> None:
@@ -58,24 +73,3 @@ async def send_digest(bot: Bot, pool: asyncpg.Pool) -> None:
     logger.info("Digest sent for %s", date_str)
 
 
-async def check_errors(bot: Bot, pool: asyncpg.Pool) -> None:
-    """Poll errors table and send unsent error notifications."""
-    rows = await pool.fetch(
-        "SELECT id, workflow_name, node_name, message, created_at "
-        "FROM errors WHERE is_sent = FALSE ORDER BY id"
-    )
-    if not rows:
-        return
-
-    chat_id = config.chat_id
-    for row in rows:
-        text = (
-            f"⚠️ Ошибка в workflow: {row['workflow_name']}\n"
-            f"Нода: {row['node_name']}\n"
-            f"Ошибка: {row['message']}\n"
-            f"Время: {row['created_at'].strftime('%d.%m.%Y %H:%M')}"
-        )
-        await bot.send_message(chat_id, text)
-        await pool.execute("UPDATE errors SET is_sent = TRUE WHERE id = $1", row["id"])
-
-    logger.info("Sent %d error notification(s)", len(rows))
