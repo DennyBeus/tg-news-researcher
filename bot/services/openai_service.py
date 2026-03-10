@@ -19,6 +19,16 @@ SUMMARIZE_PROMPT = (
     "Не добавляй пояснений, только JSON."
 )
 
+FILTER_PROMPT = (
+    "Ты — фильтр новостей. Тебе дан список интересов пользователя и массив постов из Telegram-каналов.\n\n"
+    "Задача: отобрать только те посты, которые соответствуют хотя бы одному интересу. "
+    "Соответствие определяй по смыслу, а не по точному совпадению слов.\n\n"
+    "Интересы:\n{interests}\n\n"
+    "Посты:\n{posts}\n\n"
+    "Верни JSON-массив подходящих постов. Каждый объект — точная копия исходного поста без изменений. "
+    "Если ни один пост не подходит — верни пустой массив []. Не добавляй пояснений, только JSON."
+)
+
 GENERATE_PROMPT = (
     "Ты — копирайтер. Тебе даны тексты новостей и примеры постов пользователя (его стиль).\n\n"
     "Задача: напиши один пост на основе предоставленных новостей в стиле пользователя. "
@@ -48,6 +58,34 @@ async def summarize_news(posts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return []
     except json.JSONDecodeError:
         logger.error("Failed to parse OpenAI summarization response: %s", raw[:200])
+        return []
+
+
+async def filter_by_interests(
+    posts: list[dict[str, Any]],
+    interests: list[str],
+) -> list[dict[str, Any]]:
+    prompt = FILTER_PROMPT.format(
+        interests=json.dumps(interests, ensure_ascii=False),
+        posts=json.dumps(posts, ensure_ascii=False),
+    )
+    response = await client.chat.completions.create(
+        model=config.openai_model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.1,
+        response_format={"type": "json_object"},
+    )
+    raw = response.choices[0].message.content or ""
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return parsed
+        for key in ("posts", "results", "items"):
+            if key in parsed and isinstance(parsed[key], list):
+                return parsed[key]
+        return []
+    except json.JSONDecodeError:
+        logger.error("Failed to parse OpenAI filter response: %s", raw[:200])
         return []
 
 
