@@ -18,6 +18,7 @@ from bot.handlers import (
     digest_time,
     generate_post,
     cancel,
+    run_digest,
 )
 
 logging.basicConfig(
@@ -37,6 +38,7 @@ async def on_startup(bot: Bot) -> None:
         BotCommand(command="set_style", description="Управление стилями постов"),
         BotCommand(command="set_digest_time", description="Время дайджеста"),
         BotCommand(command="generate_post", description="Генерация поста"),
+        BotCommand(command="run_digest", description="Запустить парсинг и дайджест вручную"),
         BotCommand(command="cancel", description="Отмена текущего действия"),
     ])
     logger.info("Bot started")
@@ -61,6 +63,7 @@ def create_dispatcher() -> Dispatcher:
     dp.include_router(styles.router)
     dp.include_router(digest_time.router)
     dp.include_router(generate_post.router)
+    dp.include_router(run_digest.router)
 
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
