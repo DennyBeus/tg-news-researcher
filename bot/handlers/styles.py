@@ -16,9 +16,9 @@ router = Router()
 
 @router.message(Command("set_style"))
 async def cmd_set_style(message: Message, pool: asyncpg.Pool) -> None:
-    rows = await pool.fetch(
-        "SELECT id, LEFT(text, 50) AS text FROM styles ORDER BY id"
-    )
+    rows = await pool.fetch("SELECT id, text FROM styles ORDER BY id")
+    # Truncate text to 50 characters in Python to avoid encoding issues
+    rows = [{"id": row["id"], "text": row["text"][:50]} for row in rows]
     text = format_list(rows, "text")
     kb = build_view_keyboard("add_style", "delete_styles")
     await message.answer(text, reply_markup=kb)
@@ -36,12 +36,12 @@ async def cb_add_style(
 @router.callback_query(F.data == "delete_styles")
 async def cb_delete_styles(callback: CallbackQuery, pool: asyncpg.Pool) -> None:
     await callback.answer()
-    rows = await pool.fetch(
-        "SELECT id, LEFT(text, 50) AS text FROM styles ORDER BY id"
-    )
+    rows = await pool.fetch("SELECT id, text FROM styles ORDER BY id")
     if not rows:
         await callback.message.answer("Список пуст")
         return
+    # Truncate text to 50 characters in Python to avoid encoding issues
+    rows = [{"id": row["id"], "text": row["text"][:50]} for row in rows]
     kb = build_delete_keyboard(rows, "text", "del_st_")
     await callback.message.answer("Выберите стиль для удаления:", reply_markup=kb)
 
